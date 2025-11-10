@@ -1,0 +1,86 @@
+# A descriptive name for your workflow
+name: Node.js CI/CD Pipeline
+
+# --- Triggers ---
+# This section defines when the workflow will run.
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+# --- Jobs ---
+# A workflow is made up of one or more jobs.
+jobs:
+  # The "build-and-test" job is for Continuous Integration (CI)
+  build-and-test:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Check out the repository code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Node.js environment
+      - name: Use Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: 'npm' # Cache npm dependencies for faster builds
+
+      # Step 3: Install all dependencies (including devDependencies)
+      # 'npm ci' is recommended for CI as it uses the package-lock.json for a clean install
+      - name: Install dependencies
+        run: npm ci
+
+      # Step 4: Run tests
+      # This will execute the test script defined in your package.json
+      - name: Run tests
+        run: npm test
+
+  # The "build-and-push" job is for Continuous Delivery (CD)
+  build-and-push:
+    # This job should only run if the 'build-and-test' job succeeds
+    needs: build-and-test
+    # This job should only run on a push to the main branch, not on pull requests
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Check out the repository code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Log in to Docker Hub
+      # You must create secrets in your repository settings for this to work
+      # Go to Settings > Secrets and variables > Actions
+      # Create DOCKERHUB_USERNAME and DOCKERHUB_TOKEN
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Step 3: Build and push the Docker image
+      # The image is tagged with the unique SHA of the commit
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/simple-node-app:${{ github.sha }}
+
+  # (Optional) The "deploy" job is for Continuous Deployment
+  deploy:
+    # This job runs only after the image has been successfully pushed
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to production
+        run: |
+          echo "This is where you would add your deployment script."
+          echo "For example, you could SSH into your server and run 'docker pull' and 'docker run'."
+          echo "Deploying image: ${{ secrets.DOCKERHUB_USERNAME }}/simple-node-app:${{ github.sha }}"
